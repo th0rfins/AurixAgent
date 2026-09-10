@@ -1,7 +1,7 @@
 FROM node:20-slim
 
-# Install system dependencies for Playwright/Chromium
-# (curl + unzip needed by postinstall to fetch the Bun runtime)
+# System deps for Playwright/Chromium.
+# (curl + unzip needed to fetch the Bun runtime below)
 RUN apt-get update && apt-get install -y \
     curl \
     unzip \
@@ -24,29 +24,30 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Chromium env for Playwright
+# Use system Chromium for Playwright instead of downloading browsers
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
+# Install Bun explicitly (aurix's preferred runtime; avoids node:ffi issues
+# with the terminal renderer modules that are statically imported)
+RUN curl -fsSL https://bun.sh/install | bash
+ENV BUN_INSTALL="/root/.bun"
+ENV PATH="/root/.bun/bin:${PATH}"
+
 WORKDIR /app
 
-# Copy package files first for better layer caching
-COPY package.json package-lock.json* ./
-
-# Install dependencies
-RUN npm install --production=false
-
-# Copy source code
+# NOTE: copy the whole source BEFORE npm install, because package.json
+# lifecycle scripts (postinstall, prepare) need scripts/ and src/ present.
 COPY . .
 
-# Build TypeScript
+# --ignore-scripts: we run postinstall + build explicitly below, in order
+RUN npm install --ignore-scripts
+RUN node scripts/postinstall.mjs
 RUN npm run build
 
-# Clean up dev dependencies after build
+# Drop dev dependencies after build (typescript, eslint, tsx, ...)
 RUN npm prune --production
 
-# Entrypoint generates ~/.aurix/config.yaml from env vars at startup
-COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # Expose nothing - this is a bot that connects outbound

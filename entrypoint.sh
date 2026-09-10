@@ -32,4 +32,11 @@ fi
 # useless on Railway and may clash with \$PORT)
 export AURIX_REDDIT_BACKEND="${AURIX_REDDIT_BACKEND:-off}"
 
-exec node dist/index.js gateway
+# Bun is aurix's preferred runtime (avoids node:ffi issues); fall back to node
+if command -v bun >/dev/null 2>&1; then
+  echo "[entrypoint] starting gateway with bun"
+  exec bun dist/index.js gateway
+else
+  echo "[entrypoint] bun not found, starting gateway with node"
+  exec node dist/index.js gateway
+fi
